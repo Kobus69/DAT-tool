@@ -428,13 +428,14 @@ FIR1.set_ylabel('Voltage [V]')
 FIR1.grid(True)
 
 selected_trace_number = [
-    tracelist.index('HPD output (including datapath delay)')
+    tracelist.index('HPD output (including datapath delay)'),
     tracelist.index('Bilateral filter output'),
     tracelist.index('FIR1 output (1st order)'),
     tracelist.index('FIR1 threshold detect (0x0000 = lo, 0x0001 = hi)')]
 
 FIR1_threshold = np.array(ones(len(data_time))) * parameter_values[parameter_list.index('FIR1Threshold')]
-FIR1.plot(data_time, FIR1_threshold, 'r--', label = ("FIR1 threshold"))
+FIR1.plot(data_time, FIR1_threshold, 'r--', label = ("FIR1 pos threshold"))
+FIR1.plot(data_time, -FIR1_threshold, 'r--', label = ("FIR1 neg threshold"))
 
 for x in range(len(selected_trace_number)):
     pointer_available_traces = available_traces.index(selected_trace_number[x])
@@ -463,7 +464,7 @@ FIR2.set_xlabel('Time [us]')
 FIR2.set_ylabel('Voltage [V]')
 FIR2.grid(True)
 selected_trace_number = [
-    tracelist.index('HPD output (including datapath delay)')
+    tracelist.index('HPD output (including datapath delay)'),
     tracelist.index('Bilateral filter output'),
     tracelist.index('FIR2 output (3rd order)'),
     tracelist.index('FIR2 threshold detect (0x0000 = lo, 0x0001 = hi)')]
