@@ -111,10 +111,27 @@ new_ini = open(filename, 'w')
 # HIER MOET JE WEZEN!!!
 #
 #
-parameter_list = ['LpdA', 'LpdTau', 'InputOffset', 'BcGainP', 'BcGainI', 'InputFile', 'SizeLimit']
-parameter_values = [-0.1, 200e-9, 0.9086, 0, 0.02, '525.wav', 1000000]
+parameter_list = ['LpdA', 'LpdTau', 'Rc2', 'InputOffset', 'FIR1Threshold','BcGainP',
+                  'BcGainI', 'InputFile', 'TraceList', 'SizeLimit', 'EnergyResolution']
 
-##parameter_values = [-0.3, 100e-9, 0.9002, 0, 0.02, 'lowcount.wav', 1000000]
+available_traces = [
+    tracelist.index('Copy of input signal'),
+    tracelist.index('HPD output (including datapath delay)'),
+    tracelist.index('Bilateral filter output'),
+    tracelist.index('FIR1 output (1st order)'),
+    tracelist.index('FIR1 threshold detect (0x0000 = lo, 0x0001 = hi)'),
+    tracelist.index('Feedback loop baseline compensation (x1000)'),
+    tracelist.index('Avg slope estimate over previous interval (x1000)'),
+    tracelist.index('Slope update (x1000)')]
+
+temp = str(available_traces[0])
+n = 1
+while n < len(available_traces):
+    temp = temp + ',' + str(available_traces[n])
+    n += 1
+
+parameter_values = [-0.04, 150e-9, 5e-06, 0.9086, 0.0045, 0, 0.02, '525.wav', temp, 1500000, 25e-6]
+##parameter_values = [-0.3, 100e-9, 5e-06, 0.9002, 0, 0.02, 'lowcount.wav', temp, 1000000, 25e-6]
 
 
 
@@ -122,13 +139,16 @@ parameter_values = [-0.1, 200e-9, 0.9086, 0, 0.02, '525.wav', 1000000]
 parameter_counter = 0
 new_ini_data = []
 
-print('Processing input file '+parameter_values[-2])
 for line in template_ini:
 #    print line
     if parameter_counter < len(parameter_list):
         parameter = parameter_list[parameter_counter]
+
         # collect the traces from the ini file
         if line.find(parameter) > -1:
+            if parameter == 'InputFile':
+                print('Processing input file '+parameter_values[parameter_counter])
+
             new_ini.write(line[:-1] + str(parameter_values[parameter_counter]) + line[-1:])
             parameter_counter += 1
         else:
@@ -148,46 +168,34 @@ subprocess.call(['eds_toolV4.exe', '525.ini'])
 os.chdir('..')
 
 
-#
-# Read EDS Tool ini file
-#
-filename = 'eds_tool\\525.ini'
-assert os.path.isfile(filename), "File  does not exist!"
-print("Processing ini file "+filename)
-input_ini_data = open(filename, 'r')
-
-parameter_list = ['TraceList', 'DumpFile']
-available_traces = []
-parameter_counter = 0
-
-for line in input_ini_data:
-#   print line
-    if parameter_counter < len(parameter_list):
-        parameter = parameter_list[parameter_counter]
-
-        # collect the traces from the ini file
-        if line.find(parameter_list[0]) > -1:
-            start = line.find('=')+1
-            temp = line[start:].lstrip(' ')
-            temp = temp[:-1].split(',')
-
-            n = 0
-            while n < len(temp):
-                available_traces.append(int(temp[n]))
-                n += 1
-
-        # collect dump file/output wavfile name
-        if line.find(parameter_list[1]) > -1:
-            start = line.find('=')+1
-            temp = line[start:].lstrip(' ')
-            filename_wavfile = 'eds_tool\\' + temp[:-1]
+###
+### Read EDS Tool ini file
+###
+##filename = 'eds_tool\\525.ini'
+##assert os.path.isfile(filename), "File  does not exist!"
+##print("Processing ini file "+filename)
+##input_ini_data = open(filename, 'r')
+##
+##parameter_list = ['TraceList', 'DumpFile']
+##parameter_counter = 0
+##
+##for line in input_ini_data:
+###   print line
+##    if parameter_counter < len(parameter_list):
+##        parameter = parameter_list[parameter_counter]
+##
+##        # collect dump file/output wavfile name
+##        if line.find(parameter_list[1]) > -1:
+##            start = line.find('=')+1
+##            temp = line[start:].lstrip(' ')
+##            filename_wavfile = 'eds_tool\\' + temp[:-1]
 
 #
-# Check if wav file exists and open it
+# Read wav file and convert LSB to Volt
 #
-assert os.path.isfile(filename_wavfile), "File  does not exist!"
-
+filename_wavfile = 'eds_tool\\trace.wav'
 (rate, data_value) = wavfile.read(filename_wavfile)
+data_value = data_value /(2**15 * parameter_values[parameter_list.index('EnergyResolution')])
 data_time = [x*0.025 for x in range(len(data_value[:,1]))]
 print("Processing wav file "+filename_wavfile)
 
@@ -256,7 +264,6 @@ temp = get_current_fig_manager()
 temp.window.SetPosition((0, 0))
 temp.window.SetSize((300, 300))
 
-
 (n, bins, temp) = histogram_plot.hist(step_height, bins=40)
 del(temp)
 
@@ -298,6 +305,8 @@ while n_chops > 0:
             nice_chop_counter +=1
 
     n_chops -= 1
+
+del(d_chopped_data)
 
 print("The total number of nice chops is "+str(nice_chop_counter))
 
@@ -346,6 +355,8 @@ if nice_chop_counter > 0:   # if no chops are found, no slopes can be determined
     chops.plot(data_time[(start+stop)/2 + d_range[0]:(start+stop)/2 + d_range[1]], LPDA, 'g', label = ("Slope LPDA setting"))
     chops.plot(data_time[start:stop], sum_chops[start:stop], 'g.-', linewidth = 5, label = ("LPDA slice"))
 
+    del(LPDA)
+
 
     #
     # plot slopes and selected region for Rc2
@@ -364,6 +375,8 @@ if nice_chop_counter > 0:   # if no chops are found, no slopes can be determined
     Rc2 = Rc2 + np.average(sum_chops[start:stop])
     chops.plot(data_time[(start+stop)/2 + d_range[0]:(start+stop)/2 + d_range[1]], Rc2, 'k', label = ("Slope Rc2 setting"))
     chops.plot(data_time[start:stop], sum_chops[start:stop], 'k.-', linewidth = 5, label = ("Rc2 slice"))
+
+    del(Rc2)
 
 
 
@@ -390,6 +403,8 @@ if nice_chop_counter > 0:   # if no chops are found, no slopes can be determined
     ref_line = np.array(range(d_range[0], d_range[1])) * 0
     ref_line = ref_line + np.average(sum_chops[start:stop])
     chops.plot(data_time[(start+stop)/2 + d_range[0]:(start+stop)/2 + d_range[1]], ref_line, 'r--', label = ("Reference line"))
+
+    del(IOffset)
 
 
 
@@ -424,7 +439,7 @@ if nice_chop_counter > 0:   # if no chops are found, no slopes can be determined
     chops.legend(handles, labels)
     chops.legend(loc = 2)
 
-#del()
+del(left_plateau, sum_chops)
 
 
 
@@ -435,31 +450,85 @@ if nice_chop_counter > 0:   # if no chops are found, no slopes can be determined
 # This code plots sets of traces from the wave file
 #
 plot_range = np.array([0,160000])/25    # time in ns
+
 fig1 = plt.figure()
-ax = fig1.add_subplot(111)
+HPD = fig1.add_subplot(111)
 temp = get_current_fig_manager()
 temp.window.SetPosition((700, 0))
 temp.window.SetSize((700, 500))
 
-ax.set_xlabel('Time [us]')
-ax.set_ylabel('I dont know')
-ax.grid(True)
+HPD.set_xlabel('Time [us]')
+HPD.set_ylabel('I dont know')
+HPD.grid(True)
 
-# plot input signal + HPD
-selected_trace_number = [0,1,2,7]
+# plot HPD
+selected_trace_number = [
+    tracelist.index('Copy of input signal'),
+    tracelist.index('HPD output (including datapath delay)'),
+    tracelist.index('Bilateral filter output'),
+    tracelist.index('FIR1 threshold detect (0x0000 = lo, 0x0001 = hi)')]
+
 for x in range(len(selected_trace_number)):
     pointer_available_traces = available_traces.index(selected_trace_number[x])
-##    normalized_data = np.array(data_value[plot_range[0]:plot_range[1],pointer_available_traces])
     normalized_data = np.array(data_value[:,pointer_available_traces])
     normalized_data = normalized_data.astype(np.float64) / max(abs(normalized_data))
-##    ax.plot(data_time[plot_range[0]:plot_range[1]], normalized_data, trace_colour[x], linewidth=1, label = (tracelist[selected_trace_number[x]]))
-    ax.plot(data_time, normalized_data, trace_colour[x], linewidth=1, label = (tracelist[selected_trace_number[x]]))
+    HPD.plot(data_time, normalized_data, trace_colour[x], linewidth=1, label = (tracelist[selected_trace_number[x]]))
 
-ax.set_xlim(plot_range[0], plot_range[1])
-ax.set_ylim(-1, 1)
+HPD.set_xlim(plot_range[0], plot_range[1])
+HPD.set_ylim(-1, 1)
 
-handles, labels = ax.get_legend_handles_labels()
-ax.legend(handles, labels)
+handles, labels = HPD.get_legend_handles_labels()
+HPD.legend(handles, labels)
+
+#
+# Plot traces for FIR 1
+#
+fig2 = plt.figure()
+FIR1 = fig2.add_subplot(111)
+temp = get_current_fig_manager()
+temp.window.SetPosition((700, 500))
+temp.window.SetSize((700, 500))
+
+FIR1.set_xlabel('Time [us]')
+FIR1.set_ylabel('I dont know')
+FIR1.grid(True)
+
+# plot FIR1 signals
+selected_trace_number = [
+    tracelist.index('Bilateral filter output'),
+    tracelist.index('FIR1 output (1st order)'),
+    tracelist.index('FIR1 threshold detect (0x0000 = lo, 0x0001 = hi)')]
+
+FIR1_threshold = np.array(ones(len(data_time))) * parameter_values[parameter_list.index('FIR1Threshold')]
+FIR1.plot(data_time, FIR1_threshold, 'r--', label = ("FIR1 threshold"))
+
+for x in range(len(selected_trace_number)):
+    pointer_available_traces = available_traces.index(selected_trace_number[x])
+    normalized_data = np.array(data_value[:,pointer_available_traces])
+    normalized_data = normalized_data.astype(np.float64) / max(abs(normalized_data))
+    FIR1.plot(data_time, normalized_data, trace_colour[x], linewidth=1, label = (tracelist[selected_trace_number[x]]))
+
+FIR1.set_xlim(plot_range[0], plot_range[1])
+FIR1.set_ylim(-1, 1)
+
+handles, labels = FIR1.get_legend_handles_labels()
+FIR1.legend(handles, labels)
+
+# Plot the histogram of the FIR1 output
+fig = plt.figure("Histogram FIR1 output")
+histogram_plot = fig.add_subplot(111)
+histogram_plot.grid(True)
+plt.xlabel('FIR1 output [V]')
+plt.ylabel('Occurence')
+plt.title('Distribution of FIR1 output')
+temp = get_current_fig_manager()
+temp.window.SetPosition((0, 0))
+temp.window.SetSize((300, 300))
+
+pointer_available_traces = available_traces.index(selected_trace_number[1])
+(n, bins, temp) = histogram_plot.hist(np.array(data_value[:,pointer_available_traces]), bins=100)
+del(temp)
+
 
 ##fig2 = plt.figure()
 ##ax = fig2.add_subplot(111)
