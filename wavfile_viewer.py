@@ -9,6 +9,8 @@
 # Licence:     <your licence>
 #-------------------------------------------------------------------------------
 
+# GIT password = FEICompany2013
+
 
 import numpy as np
 import scipy as sp
@@ -21,44 +23,6 @@ from scipy.io import wavfile
 from scipy import stats
 from pylab import *
 
-##from chaco.shell import *
-
-
-
-##from enthought.traits.api import Enum, HasTraits, Instance
-##from enthought.traits.ui.api import Group, Item, View
-##
-##class ImagePlotTraits(HasTraits):
-##
-##    origin = Enum("bottom left", "top left", "bottom right", "top right")
-##
-##    traits_view = View(
-##                    Group(
-##                        Item('origin', label="Data origin"),
-##                        Item('plot', editor=ComponentEditor(), show_label=False),
-##                        orientation = "vertical"),
-##                    width=600, height=600, resizable=True,
-##                    title="Chaco Plot"
-##                    )
-##
-##    def __init__(self):
-##        # Create the data and the PlotData object.  For a 2D plot, we need to
-##        # take the row of X points and Y points and create a grid from them
-##        # using meshgrid().
-##        self.plot = plot
-##        return
-##
-##    def _origin_changed(self):
-##        self.renderer.origin = self.origin
-##        self.plot.request_redraw()
-##
-###===============================================================================
-### demo object that is used by the demo.py application.
-###===============================================================================
-##demo = ImagePlotTraits()
-##
-##if __name__ == "__main__":
-##    demo.configure_traits()
 
 
 
@@ -111,17 +75,17 @@ new_ini = open(filename, 'w')
 # HIER MOET JE WEZEN!!!
 #
 #
-parameter_list = ['LpdA', 'LpdTau', 'Rc2', 'InputOffset', 'FIR1Threshold','BcGainP',
-                  'BcGainI', 'InputFile', 'TraceList', 'SizeLimit', 'EnergyResolution']
+parameter_list = ['LpdA', 'LpdTau', 'Rc2', 'InputOffset', 'FIR1Threshold', 'FIR2Threshold',
+                  'BcGainP', 'BcGainI', 'InputFile', 'TraceList', 'SizeLimit', 'EnergyResolution']
 
 available_traces = [
     tracelist.index('Copy of input signal'),
     tracelist.index('HPD output (including datapath delay)'),
     tracelist.index('Bilateral filter output'),
     tracelist.index('FIR1 output (1st order)'),
+    tracelist.index('FIR2 output (3rd order)'),
     tracelist.index('FIR1 threshold detect (0x0000 = lo, 0x0001 = hi)'),
-    tracelist.index('Feedback loop baseline compensation (x1000)'),
-    tracelist.index('Avg slope estimate over previous interval (x1000)'),
+    tracelist.index('FIR2 threshold detect (0x0000 = lo, 0x0001 = hi)'),
     tracelist.index('Slope update (x1000)')]
 
 temp = str(available_traces[0])
@@ -130,7 +94,7 @@ while n < len(available_traces):
     temp = temp + ',' + str(available_traces[n])
     n += 1
 
-parameter_values = [-0.04, 150e-9, 5e-06, 0.9086, 0.0045, 0, 0.02, '525.wav', temp, 1500000, 25e-6]
+parameter_values = [-0.04, 150e-9, 5e-06, 0.9086, 0.0045, 0.003, 0, 0.02, '525.wav', temp, 1500000, 25e-6]
 ##parameter_values = [-0.3, 100e-9, 5e-06, 0.9002, 0, 0.02, 'lowcount.wav', temp, 1000000, 25e-6]
 
 
@@ -168,34 +132,13 @@ subprocess.call(['eds_toolV4.exe', '525.ini'])
 os.chdir('..')
 
 
-###
-### Read EDS Tool ini file
-###
-##filename = 'eds_tool\\525.ini'
-##assert os.path.isfile(filename), "File  does not exist!"
-##print("Processing ini file "+filename)
-##input_ini_data = open(filename, 'r')
-##
-##parameter_list = ['TraceList', 'DumpFile']
-##parameter_counter = 0
-##
-##for line in input_ini_data:
-###   print line
-##    if parameter_counter < len(parameter_list):
-##        parameter = parameter_list[parameter_counter]
-##
-##        # collect dump file/output wavfile name
-##        if line.find(parameter_list[1]) > -1:
-##            start = line.find('=')+1
-##            temp = line[start:].lstrip(' ')
-##            filename_wavfile = 'eds_tool\\' + temp[:-1]
 
 #
-# Read wav file and convert LSB to Volt
+# Read wav file and convert # to Volt
 #
 filename_wavfile = 'eds_tool\\trace.wav'
 (rate, data_value) = wavfile.read(filename_wavfile)
-data_value = data_value /(2**15 * parameter_values[parameter_list.index('EnergyResolution')])
+##data_value = (data_value.astype(np.float64)/2**15)  # ADC -32k.. +32k = -1V..1V
 data_time = [x*0.025 for x in range(len(data_value[:,1]))]
 print("Processing wav file "+filename_wavfile)
 
@@ -225,7 +168,6 @@ pointer_available_traces = available_traces.index(selected_trace_number[1])
 # find the start of the chops in the chopped data
 chops_pointer = np.concatenate(([0], chopper[1:]*-chopper[:-1]))
 del chopper # clean up
-##plt.plot(chops_pointer[:2000]*5000,'r.-')
 
 # determine the number of chops, create a pointer and sort it
 n_chops = sum(chops_pointer)
@@ -233,9 +175,6 @@ sum_chops = np.array([0]*n_taps)
 chops_pointer = np.sort(chops_pointer * range(len(chops_pointer)))
 chops_pointer = chops_pointer[-n_chops:]    # rhrow away the zeros in teh array
 
-##fig = plt.figure("Derivative")
-##deri = fig.add_subplot(111)
-##deri.grid(True)
 
 # First I check which step height occurs most often and determine the energy window from this.
 step_height = []
@@ -285,22 +224,18 @@ while n_chops > 0:
     right = np.average(data_value[stop - np.floor(n_taps/4):stop, pointer_available_traces])
 
     # create an energy filter to suppress al steps that are to small/large
-##    energy_window = [4500, 5000]    # quite critical
-##    energy_window = [2000, 7500]    # more relaxed
     timing_window = [-10,10]        # good for Rc2 and LPDA
-    timing_window = [-20,20]        # good for Offset
+##    timing_window = [-20,20]        # good for Offset
     d_threshold = 500
 
     if  (right-left) < energy_window[1] and (right-left) > energy_window[0]:
         # determine the 1st order derivative
         d_chopped_data = np.concatenate(([0], data_value[start+1:stop, pointer_available_traces] - data_value[start:stop-1, pointer_available_traces]))
-##        deri.plot(range(n_taps), d_chopped_data)
 
         d_start = np.floor(n_taps/2) + 5 + timing_window[0] # this is where the slope starts
         d_stop = np.floor(n_taps/2) + timing_window[1]
         if max(d_chopped_data[d_start:d_stop]) > d_threshold:
             d_chopped_data_pointer = np.argmax(d_chopped_data[d_start:d_stop])-11
-##            chops.plot(range(n_taps), data_value[start+d_chopped_data_pointer:stop+d_chopped_data_pointer, pointer_available_traces])
             sum_chops = sum_chops + data_value[start+d_chopped_data_pointer:stop+d_chopped_data_pointer, pointer_available_traces]
             nice_chop_counter +=1
 
@@ -334,7 +269,6 @@ if nice_chop_counter > 0:   # if no chops are found, no slopes can be determined
     d_sum_chops = np.concatenate(([0], sum_chops[1:]-sum_chops[:-1]))
     d_sum_chops_pointer = np.argmax(d_sum_chops)
     del d_sum_chops     # clean up
-    ##chops.plot(data_time[:n_taps], d_sum_chops, 'k.-')
 
     #
     # plot slopes and selected region for LPDA
@@ -471,7 +405,7 @@ selected_trace_number = [
 for x in range(len(selected_trace_number)):
     pointer_available_traces = available_traces.index(selected_trace_number[x])
     normalized_data = np.array(data_value[:,pointer_available_traces])
-    normalized_data = normalized_data.astype(np.float64) / max(abs(normalized_data))
+    normalized_data = normalized_data.astype(np.float64) / 2**15    #max(abs(normalized_data))
     HPD.plot(data_time, normalized_data, trace_colour[x], linewidth=1, label = (tracelist[selected_trace_number[x]]))
 
 HPD.set_xlim(plot_range[0], plot_range[1])
@@ -483,18 +417,18 @@ HPD.legend(handles, labels)
 #
 # Plot traces for FIR 1
 #
-fig2 = plt.figure()
+fig2 = plt.figure("FIR1")
 FIR1 = fig2.add_subplot(111)
 temp = get_current_fig_manager()
 temp.window.SetPosition((700, 500))
 temp.window.SetSize((700, 500))
 
 FIR1.set_xlabel('Time [us]')
-FIR1.set_ylabel('I dont know')
+FIR1.set_ylabel('Voltage [V]')
 FIR1.grid(True)
 
-# plot FIR1 signals
 selected_trace_number = [
+    tracelist.index('HPD output (including datapath delay)')
     tracelist.index('Bilateral filter output'),
     tracelist.index('FIR1 output (1st order)'),
     tracelist.index('FIR1 threshold detect (0x0000 = lo, 0x0001 = hi)')]
@@ -505,7 +439,8 @@ FIR1.plot(data_time, FIR1_threshold, 'r--', label = ("FIR1 threshold"))
 for x in range(len(selected_trace_number)):
     pointer_available_traces = available_traces.index(selected_trace_number[x])
     normalized_data = np.array(data_value[:,pointer_available_traces])
-    normalized_data = normalized_data.astype(np.float64) / max(abs(normalized_data))
+    if x < len(selected_trace_number)-1:
+        normalized_data = normalized_data.astype(np.float64) / 2**15    #max(abs(normalized_data))
     FIR1.plot(data_time, normalized_data, trace_colour[x], linewidth=1, label = (tracelist[selected_trace_number[x]]))
 
 FIR1.set_xlim(plot_range[0], plot_range[1])
@@ -514,43 +449,40 @@ FIR1.set_ylim(-1, 1)
 handles, labels = FIR1.get_legend_handles_labels()
 FIR1.legend(handles, labels)
 
-# Plot the histogram of the FIR1 output
-fig = plt.figure("Histogram FIR1 output")
-histogram_plot = fig.add_subplot(111)
-histogram_plot.grid(True)
-plt.xlabel('FIR1 output [V]')
-plt.ylabel('Occurence')
-plt.title('Distribution of FIR1 output')
+
+#
+# Plot traces for FIR 2
+#
+fig3 = plt.figure("FIR2")
+FIR2 = fig3.add_subplot(111)
 temp = get_current_fig_manager()
-temp.window.SetPosition((0, 0))
-temp.window.SetSize((300, 300))
+temp.window.SetPosition((1000, 0))
+temp.window.SetSize((700, 500))
 
-pointer_available_traces = available_traces.index(selected_trace_number[1])
-(n, bins, temp) = histogram_plot.hist(np.array(data_value[:,pointer_available_traces]), bins=100)
-del(temp)
+FIR2.set_xlabel('Time [us]')
+FIR2.set_ylabel('Voltage [V]')
+FIR2.grid(True)
+selected_trace_number = [
+    tracelist.index('HPD output (including datapath delay)')
+    tracelist.index('Bilateral filter output'),
+    tracelist.index('FIR2 output (3rd order)'),
+    tracelist.index('FIR2 threshold detect (0x0000 = lo, 0x0001 = hi)')]
 
+FIR2_threshold = np.array(ones(len(data_time))) * parameter_values[parameter_list.index('FIR2Threshold')]
+FIR2.plot(data_time, FIR2_threshold, 'r--', label = ("FIR2 threshold"))
 
-##fig2 = plt.figure()
-##ax = fig2.add_subplot(111)
-##temp = get_current_fig_manager()
-##temp.window.SetPosition((700, 500))
-##temp.window.SetSize((700, 500))
-##
-##ax.set_xlabel('Time [us]')
-##ax.set_ylabel('I dont know')
-##ax.grid(True)
+for x in range(len(selected_trace_number)):
+    pointer_available_traces = available_traces.index(selected_trace_number[x])
+    normalized_data = np.array(data_value[:,pointer_available_traces])
+    if x < len(selected_trace_number)-1:
+        normalized_data = normalized_data.astype(np.float64) / 2**15    #max(abs(normalized_data))
+    FIR2.plot(data_time, normalized_data, trace_colour[x], linewidth=1, label = (tracelist[selected_trace_number[x]]))
 
-### plot servo loops
-##selected_trace_number = [1,9,10,12]
-##for x in range(len(selected_trace_number)):
-##    pointer_available_traces = available_traces.index(selected_trace_number[x])
-##    normalized_data = np.array(data_value[:,pointer_available_traces])
-##    normalized_data = normalized_data.astype(np.float64) / max(abs(normalized_data))
-##    ax.plot(data_time, normalized_data, trace_colour[x], linewidth=1, label = (tracelist[selected_trace_number[x]]))
-##
-##ax.set_ylim(-1, 1)
-##handles, labels = ax.get_legend_handles_labels()
-##ax.legend(handles, labels)
+FIR2.set_xlim(plot_range[0], plot_range[1])
+FIR2.set_ylim(-1, 1)
+
+handles, labels = FIR2.get_legend_handles_labels()
+FIR2.legend(handles, labels)
 
 
 
