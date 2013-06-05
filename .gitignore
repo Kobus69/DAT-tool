@@ -17,6 +17,8 @@ local.properties
 .loadpath
 
 
+#Special ignore files
+525.ini
 eds_tool/
 
 # External tool builders
